@@ -60,7 +60,7 @@ uv sync
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
-## 🏃 Quick Start
+##  Quick Start
 
 1. **Copy environment file & adjust secrets**
    ```bash
@@ -195,4 +195,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ by Nik Jois <nikjois@llamasearch.ai>**
+**Built  by Nik Jois <nikjois@llamasearch.ai>**
