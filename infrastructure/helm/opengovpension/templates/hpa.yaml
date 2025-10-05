@@ -1,0 +1,168 @@
+{{- if .Values.app.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "opengovpension.fullname" . }}
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "opengovpension.fullname" . }}
+  minReplicas: {{ .Values.app.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.app.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.app.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.app.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "100"
+    - type: Pods
+      pods:
+        metric:
+          name: active_connections
+        target:
+          type: AverageValue
+          averageValue: "50"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+        - type: Pods
+          value: 1
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 50
+        - type: Pods
+          value: 2
+      selectPolicy: Max
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "opengovpension.fullname" . }}-metrics-config
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    rule_files:
+    scrape_configs:
+      - job_name: '{{ include "opengovpension.fullname" . }}'
+        static_configs:
+          - targets: ['{{ include "opengovpension.fullname" . }}:{{ .Values.metrics.port }}']
+        scrape_interval: 5s
+        metrics_path: {{ .Values.metrics.path }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "opengovpension.fullname" . }}-alerts
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: opengovpension
+      rules:
+        - alert: {{ include "opengovpension.fullname" . }}Down
+          expr: up{job="{{ include "opengovpension.fullname" . }}"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            service: {{ include "opengovpension.fullname" . }}
+          annotations:
+            summary: "{{ include "opengovpension.fullname" . }} is down"
+            description: "{{ include "opengovpension.fullname" . }} has been down for more than 5 minutes."
+
+        - alert: {{ include "opengovpension.fullname" . }}HighErrorRate
+          expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            service: {{ include "opengovpension.fullname" . }}
+          annotations:
+            summary: "High error rate on {{ include "opengovpension.fullname" . }}"
+            description: "Error rate is above 5% for more than 5 minutes."
+
+        - alert: {{ include "opengovpension.fullname" . }}LatencyHigh
+          expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+          for: 5m
+          labels:
+            severity: warning
+            service: {{ include "opengovpension.fullname" . }}
+          annotations:
+            summary: "High latency on {{ include "opengovpension.fullname" . }}"
+            description: "95th percentile latency is above 1 second for more than 5 minutes."
+
+        - alert: {{ include "opengovpension.fullname" . }}CPUUsageHigh
+          expr: rate(container_cpu_usage_seconds_total{pod=~"{{ include "opengovpension.fullname" . }}-.*"}[5m]) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            service: {{ include "opengovpension.fullname" . }}
+          annotations:
+            summary: "High CPU usage on {{ include "opengovpension.fullname" . }}"
+            description: "CPU usage is above 80% for more than 10 minutes."
+
+        - alert: {{ include "opengovpension.fullname" . }}MemoryUsageHigh
+          expr: container_memory_usage_bytes{pod=~"{{ include "opengovpension.fullname" . }}-.*"} / container_spec_memory_limit_bytes > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            service: {{ include "opengovpension.fullname" . }}
+          annotations:
+            summary: "High memory usage on {{ include "opengovpension.fullname" . }}"
+            description: "Memory usage is above 90% for more than 5 minutes."
+
+        - alert: {{ include "opengovpension.fullname" . }}RateLimitExceeded
+          expr: rate(http_requests_total{status="429"}[5m]) > 10
+          for: 5m
+          labels:
+            severity: info
+            service: {{ include "opengovpension.fullname" . }}
+          annotations:
+            summary: "Rate limiting is active on {{ include "opengovpension.fullname" . }}"
+            description: "More than 10 requests per minute are being rate limited."
+
+        - alert: {{ include "opengovpension.fullname" . }}DatabaseConnectionErrors
+          expr: rate(database_connection_errors_total[5m]) > 0
+          for: 1m
+          labels:
+            severity: critical
+            service: {{ include "opengovpension.fullname" . }}
+          annotations:
+            summary: "Database connection errors on {{ include "opengovpension.fullname" . }}"
+            description: "Database connection errors detected."
+
+        - alert: {{ include "opengovpension.fullname" . }}CircuitBreakerOpen
+          expr: circuit_breaker_state{state="open"} > 0
+          for: 1m
+          labels:
+            severity: warning
+            service: {{ include "opengovpension.fullname" . }}
+          annotations:
+            summary: "Circuit breaker is open on {{ include "opengovpension.fullname" . }}"
+            description: "One or more circuit breakers are in open state."
+{{- end }}

@@ -1,0 +1,118 @@
+{{- if .Values.rbac.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "opengovpension.serviceAccountName" . }}
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.serviceAccount.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "opengovpension.fullname" . }}-role
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["prometheusrules"]
+    verbs: ["get", "list", "watch"]
+  {{- with .Values.rbac.rules }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "opengovpension.fullname" . }}-rolebinding
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "opengovpension.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "opengovpension.fullname" . }}-role
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- if .Values.rbac.createClusterRole }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "opengovpension.fullname" . }}-clusterrole
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["cert-manager.io"]
+    resources: ["clusterissuers", "certificates"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["prometheuses", "servicemonitors", "podmonitors"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["keda.sh"]
+    resources: ["scaledobjects", "triggerauthentications"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "opengovpension.fullname" . }}-clusterrolebinding
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "opengovpension.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ include "opengovpension.fullname" . }}-clusterrole
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+{{- end }}
+---
+{{- if .Values.deployment.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "opengovpension.fullname" . }}-pdb
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.deployment.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.deployment.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- if .Values.deployment.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.deployment.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "opengovpension.selectorLabels" . | nindent 6 }}
+{{- end }}

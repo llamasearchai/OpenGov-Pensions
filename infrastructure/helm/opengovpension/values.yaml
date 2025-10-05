@@ -1,0 +1,334 @@
+# Default values for opengovpension.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global configuration
+global:
+  imageRegistry: "ghcr.io"
+  imagePullSecrets: []
+  storageClass: ""
+
+# Application configuration
+app:
+  name: "opengovpension"
+  version: "1.1.0"
+  environment: "production"
+  debug: false
+
+  # Image configuration
+  image:
+    registry: ghcr.io
+    repository: llamasearchai/opengovpension
+    tag: "1.1.0"
+    pullPolicy: Always
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8000
+    annotations: {}
+
+  # Ingress configuration
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/rate-limit: "120"
+      nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    hosts:
+      - host: api.opengovpension.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: opengovpension-tls
+        hosts:
+          - api.opengovpension.com
+
+  # Resource limits and requests
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+  # Autoscaling configuration
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  # Health checks
+  healthCheck:
+    livenessProbe:
+      httpGet:
+        path: /health/liveness
+        port: http
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readinessProbe:
+      httpGet:
+        path: /health/readiness
+        port: http
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+    startupProbe:
+      httpGet:
+        path: /health/startup
+        port: http
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 30
+
+  # Security context
+  securityContext:
+    enabled: true
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
+
+  # Pod security context
+  podSecurityContext:
+    enabled: true
+    fsGroup: 1001
+
+  # Environment variables
+  env: []
+  # - name: FOO
+  #   value: "bar"
+
+  # Secrets
+  secrets: {}
+    # database-url: "postgresql://user:pass@host:port/db"
+    # redis-url: "redis://host:port/0"
+    # jwt-secret: "your-secret-key"
+    # openai-api-key: "your-openai-key"
+
+# Database configuration
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "changeMe123"
+    username: "opengovpension"
+    password: "changeMe123"
+    database: "opengovpension"
+  architecture: standalone
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+    initdb:
+      scripts:
+        init.sql: |
+          CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+# Redis configuration
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+
+# Monitoring configuration
+monitoring:
+  prometheus:
+    enabled: true
+    server:
+      persistentVolume:
+        size: 8Gi
+  grafana:
+    enabled: true
+    adminPassword: "changeMe123"
+    persistence:
+      enabled: true
+      size: 2Gi
+
+# Network policies
+networkPolicies:
+  enabled: true
+  allowedIngressPorts: [80, 443, 8000, 8001]
+  allowedEgressPorts: [53, 80, 443, 5432, 6379]
+
+# Service mesh (if using Istio, Linkerd, etc.)
+serviceMesh:
+  enabled: false
+  type: "istio"  # istio, linkerd, consul
+
+# Backup configuration
+backup:
+  enabled: false
+  schedule: "0 2 * * *"
+  retentionDays: 30
+  storage:
+    type: s3
+    bucket: "opengovpension-backups"
+    region: us-west-2
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "json"
+  structured: true
+
+# Metrics configuration
+metrics:
+  enabled: true
+  port: 8001
+  path: "/metrics"
+
+# Tracing configuration
+tracing:
+  enabled: false
+  otlpEndpoint: "http://jaeger-collector:14268/api/traces"
+
+# Feature flags
+features:
+  websockets: true
+  auditLog: true
+  rateLimiting: true
+  cors: true
+  requestValidation: true
+
+# Security settings
+security:
+  maxLoginAttempts: 5
+  lockoutDurationMinutes: 15
+  sessionCookieSecure: true
+  sessionCookieHttpOnly: true
+  enableCORS: true
+  enableRateLimiting: true
+  enableRequestValidation: true
+
+# Performance settings
+performance:
+  maxConcurrentAnalyses: 10
+  requestTimeout: 300
+  workers: 4
+
+# Development overrides (only used in development)
+development:
+  enabled: false
+  debug: true
+  reload: true
+  logLevel: "DEBUG"
+
+# Test configuration
+tests:
+  enabled: false
+  image:
+    registry: ghcr.io
+    repository: llamasearchai/opengovpension
+    tag: "test"
+
+# Deployment configuration
+deployment:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  # Node selector
+  nodeSelector: {}
+
+  # Tolerations
+  tolerations: []
+
+  # Affinity
+  affinity: {}
+
+  # Pod disruption budget
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  # Init containers
+  initContainers: []
+
+  # Additional containers
+  additionalContainers: []
+
+  # Additional volumes
+  additionalVolumes: []
+
+  # Additional volume mounts
+  additionalVolumeMounts: []
+
+# Service account configuration
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# RBAC configuration
+rbac:
+  create: true
+  rules: []
+
+# TLS configuration
+tls:
+  enabled: true
+  secretName: "opengovpension-tls"
+  issuerRef:
+    name: "letsencrypt-prod"
+    kind: "ClusterIssuer"
+
+# Certificate manager configuration
+certManager:
+  enabled: true
+  clusterIssuer:
+    name: "letsencrypt-prod"
+    email: "admin@opengovpension.com"
+
+# External secrets (if using external-secrets operator)
+externalSecrets:
+  enabled: false
+  refreshInterval: 15
+  secretStore:
+    name: "aws-secretsmanager"
+    kind: "SecretStore"
+
+# KEDA (Kubernetes Event-driven Autoscaling) configuration
+keda:
+  enabled: false
+  scaledObject:
+    pollingInterval: 30
+    cooldownPeriod: 300
+    minReplicaCount: 0
+    maxReplicaCount: 20
+    triggers:
+      - type: prometheus
+        metadata:
+          serverAddress: http://prometheus-k8s.monitoring.svc.cluster.local:9090
+          metricName: http_requests_per_second
+          threshold: "100"
+          query: sum(rate(http_requests_total[2m]))
+
+# ArgoCD configuration
+argocd:
+  enabled: false
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

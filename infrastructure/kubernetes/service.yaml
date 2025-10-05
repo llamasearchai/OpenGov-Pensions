@@ -1,0 +1,146 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: opengovpension-api
+  labels:
+    app: opengovpension
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  - name: metrics
+    port: 8001
+    targetPort: 8001
+    protocol: TCP
+  selector:
+    app: opengovpension
+    component: api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opengovpension-api-external
+  labels:
+    app: opengovpension
+    component: api
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  - name: https
+    port: 443
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    app: opengovpension
+    component: api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opengovpension-api-headless
+  labels:
+    app: opengovpension
+    component: api
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    app: opengovpension
+    component: api
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: opengovpension-api
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "120"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/limit-req-status-code: "429"
+    nginx.ingress.kubernetes.io/limit-req-zone: "opengovpension_rl_zone"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - api.opengovpension.com
+    secretName: opengovpension-tls
+  rules:
+  - host: api.opengovpension.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: opengovpension-api
+            port:
+              number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opengovpension-api-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: opengovpension
+      component: api
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: opengovpension
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8000
+    - protocol: TCP
+      port: 8001
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: database
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to: []  # Allow DNS resolution
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to: []  # Allow external API calls
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80

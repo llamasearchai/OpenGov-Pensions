@@ -1,0 +1,154 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opengovpension.fullname" . }}
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.app.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.app.service.port }}
+      targetPort: {{ .Values.app.service.targetPort }}
+      protocol: TCP
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: {{ .Values.metrics.port }}
+      protocol: TCP
+  selector:
+    {{- include "opengovpension.selectorLabels" . | nindent 4 }}
+---
+{{- if eq .Values.app.service.type "LoadBalancer" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opengovpension.fullname" . }}-external
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 80
+      targetPort: {{ .Values.app.service.targetPort }}
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: {{ .Values.app.service.targetPort }}
+      protocol: TCP
+  selector:
+    {{- include "opengovpension.selectorLabels" . | nindent 4 }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opengovpension.fullname" . }}-headless
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: http
+      port: {{ .Values.app.service.targetPort }}
+      targetPort: {{ .Values.app.service.targetPort }}
+      protocol: TCP
+  selector:
+    {{- include "opengovpension.selectorLabels" . | nindent 4 }}
+---
+{{- if .Values.app.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "opengovpension.fullname" . }}
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.app.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.app.ingress.className }}
+  {{- if .Values.app.ingress.tls }}
+  tls:
+    {{- range .Values.app.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.app.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "opengovpension.fullname" $ }}
+                port:
+                  number: {{ $.Values.app.service.port }}
+          {{- end }}
+    {{- end }}
+---
+{{- end }}
+{{- if .Values.networkPolicies.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opengovpension.fullname" . }}-policy
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "opengovpension.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "opengovpension.selectorLabels" . | nindent 14 }}
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        {{- range .Values.networkPolicies.allowedIngressPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to: []
+      ports:
+        {{- range .Values.networkPolicies.allowedEgressPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}

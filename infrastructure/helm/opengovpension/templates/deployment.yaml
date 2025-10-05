@@ -1,0 +1,166 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opengovpension.fullname" . }}
+  labels:
+    {{- include "opengovpension.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.app.autoscaling.minReplicas }}
+  {{- end }}
+  strategy:
+    type: {{ .Values.deployment.strategy.type }}
+    rollingUpdate:
+      maxSurge: {{ .Values.deployment.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.deployment.strategy.rollingUpdate.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "opengovpension.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opengovpension.selectorLabels" . | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.metrics.port }}"
+        prometheus.io/path: "{{ .Values.metrics.path }}"
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "opengovpension.serviceAccountName" . }}
+      securityContext:
+        {{- if .Values.app.podSecurityContext.enabled }}
+        {{- toYaml .Values.app.podSecurityContext | nindent 8 }}
+        {{- else }}
+        {{- toYaml .Values.app.securityContext | nindent 8 }}
+        {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.app.image.registry }}/{{ .Values.app.image.repository }}:{{ .Values.app.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.service.targetPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+          env:
+            - name: ENVIRONMENT
+              value: "{{ .Values.app.environment }}"
+            - name: DEBUG
+              value: "{{ .Values.app.debug }}"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "{{ .Values.app.service.targetPort }}"
+            - name: WORKERS
+              value: "{{ .Values.performance.workers }}"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opengovpension.fullname" . }}-secrets
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opengovpension.fullname" . }}-secrets
+                  key: redis-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opengovpension.fullname" . }}-secrets
+                  key: jwt-secret
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opengovpension.fullname" . }}-secrets
+                  key: openai-api-key
+            - name: LOG_LEVEL
+              value: "{{ .Values.logging.level }}"
+            - name: STRUCTURED_LOGGING
+              value: "{{ .Values.logging.structured }}"
+            - name: TRACING_ENABLED
+              value: "{{ .Values.tracing.enabled }}"
+            - name: PROMETHEUS_ENABLED
+              value: "{{ .Values.metrics.enabled }}"
+            - name: ENABLE_CORS
+              value: "{{ .Values.features.cors }}"
+            - name: ENABLE_RATE_LIMITING
+              value: "{{ .Values.features.rateLimiting }}"
+            - name: RATE_LIMIT_PER_MINUTE
+              value: "{{ .Values.security.maxLoginAttempts }}"
+            - name: MAX_LOGIN_ATTEMPTS
+              value: "{{ .Values.security.maxLoginAttempts }}"
+            - name: LOCKOUT_DURATION_MINUTES
+              value: "{{ .Values.security.lockoutDurationMinutes }}"
+            - name: SESSION_COOKIE_SECURE
+              value: "{{ .Values.security.sessionCookieSecure }}"
+            - name: SESSION_COOKIE_HTTPONLY
+              value: "{{ .Values.security.sessionCookieHttpOnly }}"
+            - name: ENABLE_REQUEST_VALIDATION
+              value: "{{ .Values.features.requestValidation }}"
+            - name: MAX_CONCURRENT_ANALYSES
+              value: "{{ .Values.performance.maxConcurrentAnalyses }}"
+            - name: REQUEST_TIMEOUT
+              value: "{{ .Values.performance.requestTimeout }}"
+            - name: ENABLE_WEBSOCKETS
+              value: "{{ .Values.features.websockets }}"
+            - name: ENABLE_AUDIT_LOG
+              value: "{{ .Values.features.auditLog }}"
+            {{- with .Values.app.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.app.healthCheck.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.app.healthCheck.readinessProbe | nindent 12 }}
+          startupProbe:
+            {{- toYaml .Values.app.healthCheck.startupProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
+          securityContext:
+            {{- if .Values.app.securityContext.enabled }}
+            {{- toYaml .Values.app.securityContext | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: data-volume
+              mountPath: /app/data
+            {{- with .Values.deployment.additionalVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        {{- with .Values.deployment.additionalContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+        - name: data-volume
+          emptyDir: {}
+        {{- with .Values.deployment.additionalVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.deployment.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.deployment.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.deployment.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.deployment.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
