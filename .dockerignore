@@ -1,0 +1,117 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv
+venv/
+ENV/
+env/
+.virtualenv
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+coverage.xml
+*.cover
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+docs/_build/
+site/
+*.md
+!README.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.circleci/
+
+# Development
+.env
+.env.*
+!.env.example
+*.log
+logs/
+
+# Data files (exclude from image)
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/*.log
+
+# Temporary files
+tmp/
+*.tmp
+*.temp
+.cache/
+
+# Node modules (if any)
+node_modules/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Ruff
+.ruff_cache/
+
+# Security reports
+bandit-report.json
+safety-report.json
+pip-audit-report.json
+trivy-report.json
+
+# Performance
+profiler/
+*.prof
+
+# Alembic
+alembic/versions/__pycache__/
+
+# Docker
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile.*
+!Dockerfile
+
+# Kubernetes
+infrastructure/
+
+# Helm
+*.tgz
+
+# Archives
+*.tar
+*.tar.gz
+*.zip
